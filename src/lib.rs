@@ -26,6 +26,11 @@ use handler::{FileType, file_path};
 use parser::Config;
 use tokio::{net::TcpListener, time::Duration};
 
+#[allow(missing_docs)]
+pub fn set_data_root(path: impl Into<String>) -> tokio::io::Result<()> {
+    handler::set_data_root(path)
+}
+
 /// Runs the web server on the provided TCP listener and returns a `Server` instance.
 ///
 /// # Arguments

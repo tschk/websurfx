@@ -31,8 +31,16 @@ pub enum FileType {
 }
 
 /// A static variable which stores the different filesystem paths for various file/folder types.
-static FILE_PATHS_FOR_DIFF_FILE_TYPES: OnceCell<Vec<(FileType, Vec<String>)>> =
+static FILE_PATHS_FOR_DIFF_FILE_TYPES: OnceCell<Vec<(FileType, Vec<Option<String>>)>> =
     OnceCell::const_new();
+static DATA_ROOT: OnceCell<String> = OnceCell::const_new();
+
+#[allow(missing_docs)]
+pub fn set_data_root(path: impl Into<String>) -> Result<(), Error> {
+    DATA_ROOT
+        .set(path.into())
+        .map_err(|_| Error::new(tokio::io::ErrorKind::AlreadyExists, "data root already set"))
+}
 
 /// A function which returns an appropriate path for thr provided file type by checking if the path
 /// for the given file type exists on that path.
@@ -52,48 +60,72 @@ static FILE_PATHS_FOR_DIFF_FILE_TYPES: OnceCell<Vec<(FileType, Vec<String>)>> =
 ///    here then it returns an error as mentioned above.
 pub async fn file_path(file_type: FileType) -> Result<String, Error> {
     let home = std::env::var("HOME").unwrap_or_default();
+    let data_root = DATA_ROOT.get().cloned().unwrap_or_default();
 
-    let file_path: Vec<String> = FILE_PATHS_FOR_DIFF_FILE_TYPES
+    let file_path: Vec<Option<String>> = FILE_PATHS_FOR_DIFF_FILE_TYPES
         .get_or_init(|| async move {
             vec![
                 (
                     FileType::Config,
                     vec![
-                        format!(
+                        (!data_root.is_empty())
+                            .then(|| format!("{data_root}/websurfx/{CONFIG_FILE_NAME}")),
+                        Some(format!(
                             "{}/.config/{}/{}",
                             home, COMMON_DIRECTORY_NAME, CONFIG_FILE_NAME
-                        ),
-                        format!("/etc/xdg/{}/{}", COMMON_DIRECTORY_NAME, CONFIG_FILE_NAME),
-                        format!("./{}/{}", COMMON_DIRECTORY_NAME, CONFIG_FILE_NAME),
+                        )),
+                        Some(format!(
+                            "/etc/xdg/{}/{}",
+                            COMMON_DIRECTORY_NAME, CONFIG_FILE_NAME
+                        )),
+                        Some(format!("./{}/{}", COMMON_DIRECTORY_NAME, CONFIG_FILE_NAME)),
                     ],
                 ),
                 (
                     FileType::Theme,
                     vec![
-                        format!("/opt/websurfx/{}/", PUBLIC_DIRECTORY_NAME),
-                        format!("./{}/", PUBLIC_DIRECTORY_NAME),
+                        (!data_root.is_empty())
+                            .then(|| format!("{data_root}/{PUBLIC_DIRECTORY_NAME}/")),
+                        Some(format!("/opt/websurfx/{}/", PUBLIC_DIRECTORY_NAME)),
+                        Some(format!("./{}/", PUBLIC_DIRECTORY_NAME)),
                     ],
                 ),
                 (
                     FileType::AllowList,
                     vec![
-                        format!(
+                        (!data_root.is_empty())
+                            .then(|| format!("{data_root}/websurfx/{ALLOWLIST_FILE_NAME}")),
+                        Some(format!(
                             "{}/.config/{}/{}",
                             home, COMMON_DIRECTORY_NAME, ALLOWLIST_FILE_NAME
-                        ),
-                        format!("/etc/xdg/{}/{}", COMMON_DIRECTORY_NAME, ALLOWLIST_FILE_NAME),
-                        format!("./{}/{}", COMMON_DIRECTORY_NAME, ALLOWLIST_FILE_NAME),
+                        )),
+                        Some(format!(
+                            "/etc/xdg/{}/{}",
+                            COMMON_DIRECTORY_NAME, ALLOWLIST_FILE_NAME
+                        )),
+                        Some(format!(
+                            "./{}/{}",
+                            COMMON_DIRECTORY_NAME, ALLOWLIST_FILE_NAME
+                        )),
                     ],
                 ),
                 (
                     FileType::BlockList,
                     vec![
-                        format!(
+                        (!data_root.is_empty())
+                            .then(|| format!("{data_root}/websurfx/{BLOCKLIST_FILE_NAME}")),
+                        Some(format!(
                             "{}/.config/{}/{}",
                             home, COMMON_DIRECTORY_NAME, BLOCKLIST_FILE_NAME
-                        ),
-                        format!("/etc/xdg/{}/{}", COMMON_DIRECTORY_NAME, BLOCKLIST_FILE_NAME),
-                        format!("./{}/{}", COMMON_DIRECTORY_NAME, BLOCKLIST_FILE_NAME),
+                        )),
+                        Some(format!(
+                            "/etc/xdg/{}/{}",
+                            COMMON_DIRECTORY_NAME, BLOCKLIST_FILE_NAME
+                        )),
+                        Some(format!(
+                            "./{}/{}",
+                            COMMON_DIRECTORY_NAME, BLOCKLIST_FILE_NAME
+                        )),
                     ],
                 ),
             ]
@@ -104,6 +136,9 @@ pub async fn file_path(file_type: FileType) -> Result<String, Error> {
         .unwrap();
 
     for path in file_path {
+        let Some(path) = path else {
+            continue;
+        };
         if try_exists(&path).await? {
             return Ok(path);
         }
